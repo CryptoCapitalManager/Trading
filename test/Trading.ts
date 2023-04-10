@@ -5,6 +5,7 @@ import { Trading } from '../typechain/Trading';
 import { USDC } from '../typechain/USDC';
 import { BigNumber, utils } from 'ethers';
 import { keccak256 } from 'ethers/lib/utils';
+//import { SwapRouter } from '@uniswap/v3-periphery';
 
 chai.use(solidity);
 
@@ -26,8 +27,15 @@ describe('Trading', () => {
         expect(await USDC.name()).to.eq('USDC');
         expect(await USDC.symbol()).to.eq('USDC');
 
+        // const swapRouter = new SwapRouter(
+        //     // The address of the Uniswap V3 Router contract
+        //     '0xE592427A0AEce92De3Edee1F18E0157C05861564',
+        //     // The provider to use for web3.js
+        //     ethers.provider
+        //   );
         const tradingFactory = await ethers.getContractFactory('Trading', signers[0]);
-        trading = (await tradingFactory.deploy(USDC.address, [])) as Trading;
+        trading = (await tradingFactory.deploy(USDC.address, [], '0xE592427A0AEce92De3Edee1F18E0157C05861564',
+        '0xaBBc5F99639c9B6bCb58544ddf04EFA6802F4064', '0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868')) as Trading;
         await trading.deployed();
 
         expect(trading.address).to.properAddress;

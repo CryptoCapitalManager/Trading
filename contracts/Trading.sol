@@ -4,6 +4,11 @@ pragma solidity ^0.8.0;
 import "hardhat/console.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
+import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
+import '../gmx-contracts-interfaces/IRouter.sol';
+import '../gmx-contracts-interfaces/IPositionRouter.sol';
+
 
 struct Investment {
     uint256 userOwnership;
@@ -19,6 +24,10 @@ contract Trading is Ownable {
     mapping(address => Investment[]) internal userRecord;
     uint256 internal totalUserOwnershipPoints;
     address [] internal liquidityPools;
+    mapping (address => bool) internal approvedTokens;
+    ISwapRouter public immutable swapRouter;
+    address [] internal openPositions;
+    IPositionRouter internal immutable positionRouter;
 
     /**
      * @notice This event is emitted when a user deposit occurs. 
@@ -45,20 +54,27 @@ contract Trading is Ownable {
 
     /**
      * @param _USDC_ADDRESS Smart contract address of the USDC.
-     * @param _liquidityPools An array of all liquidity pools we will be able to interact with.
+     * @param _tokens An array of all tokens we will be able to trade.
      * @dev In the constructor, we are setting `USDC_CONTRACT`, `MAX_ASSETS_DEPOSITED` and `liquidityPools` variables. 
      * After contract deployment, we should manually send 100k USDC tokens to the contract from the account that deployed the contract.
      * With this little compromise we were able to implement much more gas-efficient logic in our smart contract.
      */
-    constructor (address _USDC_ADDRESS, address[] memory _liquidityPools) {
+    constructor (address _USDC_ADDRESS, address[] memory _tokens, address _swapRouterAddress, address _gmxRouter, address _gmxPositionRouter) {
         USDC_CONTRACT = ERC20(_USDC_ADDRESS);
         MAX_ASSETS_DEPOSITED = 10000000*10**18;
-        liquidityPools = _liquidityPools;
+        swapRouter = ISwapRouter(_swapRouterAddress);
+        positionRouter = IPositionRouter(_gmxPositionRouter);
+
+        for(uint8 i=0; i < _tokens.length; i++) approvedTokens[_tokens[i]] = true;
 
         //Manually send 100k USDC tokens to the contract from the account that deployed the contract
         Investment memory tmp = Investment(1000000000, 100000*10**18, block.timestamp);
         userRecord[msg.sender].push(tmp);
-        totalUserOwnershipPoints = 1000000000;
+        totalUserOwnershipPoints = 100;
+
+        //TODO Otkomentarisati liniju 76 pre deploya
+        //IRouter(_gmxRouter).approvePlugin(_gmxPositionRouter);
+        ERC20(_USDC_ADDRESS).approve(_gmxRouter, type(uint256).max);
     }
 
     //USER FUNCTIONS
@@ -128,27 +144,130 @@ contract Trading is Ownable {
 
     //TRADING FUNCTIONS
     //TODO
-    function swapTokens(uint256 amount, address liquidityPool, bool _type) external onlyOwner{
-
-    }
-
-    //TODO
-    function enterLong(uint256 amount, address pair) external onlyOwner{
-
-    }
-
-    //TODO
-    function enterShort(uint256 amount, address pair) external onlyOwner{
-
-    }
-
-    //TODO
-    function closePosition(uint256 amount, address pair) external onlyOwner {
+    function swapTokens(uint256 _amountIn, address _tokenIn, address _tokenOut, uint24 poolFee, uint256 _amountOutMinimum, uint160 _sqrtPriceLimitX96) external onlyOwner returns(uint256 amountOut) {
+        require(approvedTokens[_tokenIn] == true && approvedTokens[_tokenOut] == true,"You can't trade tokens that are not approved.");
         
+        // Approve the router to spend tokenIn.
+        TransferHelper.safeApprove(_tokenIn, address(swapRouter), _amountIn);
+
+        ISwapRouter.ExactInputSingleParams memory params =
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: _tokenIn,
+                tokenOut: _tokenOut,
+                fee: poolFee,
+                recipient: msg.sender,
+                deadline: block.timestamp,
+                amountIn: _amountIn,
+                amountOutMinimum: _amountOutMinimum,
+                sqrtPriceLimitX96: _sqrtPriceLimitX96
+            });
+
+        // The call to `exactInputSingle` executes the swap.
+        amountOut = swapRouter.exactInputSingle(params);
+
+        /// TODO videti kako implemenitrati automatsko zatvaranje perpetual pozicija i odredjivanje njihove vrednosti
+        /// ovakvom implementacijom ne bi trebalo da se dizu pare ukoliko smo u aktivnom trade-u
+        
+        // if(_tokenIn == address(USDC_CONTRACT)){
+        //     for(uint8 i = 0; i < 3; i++){
+        //         if(openPositions[i] == address(0)) openPositions[i] = _tokenOut;
+        //     }
+        // }
+        
+        // else if(ERC20(_tokenIn).balanceOf(address(this)) == 0){
+        //     for(uint8 i = 0; i < 3; i++){
+        //         if(openPositions[i] == _tokenIn) delete openPositions[i];
+        //     }
+        // }
+    }
+
+    function swapTokensMultihop(uint256 _amountIn, address _tokenIn, address middlemanToken, address _tokenOut, uint24 poolFee1, uint24 poolFee2, uint256 _amountOutMinimum) external onlyOwner returns(uint256 amountOut) {
+        require(approvedTokens[_tokenIn] == true && approvedTokens[_tokenOut] == true,"You can't trade tokens that are not approved.");
+
+        // // Transfer `amountIn` of DAI to this contract.
+        // TransferHelper.safeTransferFrom(_tokenIn, msg.sender, address(this), _amountIn);
+
+        // Approve the router to spend DAI.
+        TransferHelper.safeApprove(_tokenIn, address(swapRouter), _amountIn);
+
+        // Multiple pool swaps are encoded through bytes called a `path`. A path is a sequence of token addresses and poolFees that define the pools used in the swaps.
+        // The format for pool encoding is (tokenIn, fee, tokenOut/tokenIn, fee, tokenOut) where tokenIn/tokenOut parameter is the shared token across the pools.
+        // Since we are swapping DAI to USDC and then USDC to WETH9 the path encoding is (DAI, 0.3%, USDC, 0.3%, WETH9).
+        ISwapRouter.ExactInputParams memory params =
+            ISwapRouter.ExactInputParams({
+                path: abi.encodePacked(_tokenIn, poolFee1, middlemanToken, poolFee2, _tokenOut),
+                recipient: msg.sender,
+                deadline: block.timestamp,
+                amountIn: _amountIn,
+                amountOutMinimum: _amountOutMinimum
+            });
+
+        // Executes the swap.
+        amountOut = swapRouter.exactInput(params);
+
+        /// TODO videti kako implemenitrati automatsko zatvaranje perpetual pozicija i odredjivanje njihove vrednosti
+        /// ovakvom implementacijom ne bi trebalo da se dizu pare ukoliko smo u aktivnom trade-u
+
+        // if(_tokenIn == address(USDC_CONTRACT)){
+        //     for(uint8 i = 0; i < 3; i++){
+        //         if(openPositions[i] == address(0)) openPositions[i] = _tokenOut;
+        //     }
+        // }
+        
+        // else if(ERC20(_tokenIn).balanceOf(address(this)) == 0){
+        //     for(uint8 i = 0; i < 3; i++){
+        //         if(openPositions[i] == _tokenIn) delete openPositions[i];
+        //     }
+        // }
+    }
+
+    //TODO
+    function enterPositionPerpetual(address[] memory _path, address _indexToken, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, 
+        bool _isLong, uint256 _acceptablePrice, uint256 _executionFee, bytes32 _referralCode, address _callbackTarget) external onlyOwner{
+        
+        require(approvedTokens[_path[0]] == true, "You can't trade tokens that are not approved.");
+
+        positionRouter.createIncreasePosition(
+            _path,
+            _indexToken,
+            _amountIn,
+            _minOut,
+            _sizeDelta,
+            _isLong,
+            _acceptablePrice,
+            _executionFee,
+            _referralCode,
+            _callbackTarget
+        );
+    }
+
+    //TODO
+    function closePositionPerpetual(address[] memory _path, address _indexToken, uint256 _collateralDelta, uint256 _sizeDelta,
+        bool _isLong, address _receiver, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee, bool _withdrawETH, address _callbackTarget) external onlyOwner {
+        
+        positionRouter.createDecreasePosition(
+            _path,
+            _indexToken,
+            _collateralDelta,
+            _sizeDelta,
+            _isLong,
+            _receiver,
+            _acceptablePrice,
+            _minOut,
+            _executionFee,
+            _withdrawETH,
+            _callbackTarget
+        );
     }
 
     //UTILS
     //TODO
+
+    function giveApproval (address tokenAddress, address spender, uint256 amount) external onlyOwner {
+        require(approvedTokens[tokenAddress] == true,"You can't give approval to this contract");
+        
+        ERC20(tokenAddress).approve(spender, amount);
+    }
 
     /**
      * @dev The function returns the value of all our open positions in USDC using Chainlink Data Feeds.

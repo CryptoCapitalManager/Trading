@@ -38,14 +38,19 @@ const config: HardhatUserConfig = {
 	},
 
 	networks: {
-		rinkeby: {
-			url: 'https://rinkeby.infura.io/v3/7ddf913c0c1a48f6ae1fa498e0c9367d',
-			accounts: ['0x2beee09932ab49f61464ad6caab22a281a76252221103774c8a81331a3e9c82f'],
+		goerli: {
+			url: process.env.INFURA_GOERLI,
+			accounts: [process.env.PRIVATE_KEY],
 		},
+		arbitrum: {
+			url: '',
+			accounts: [process.env.PRIVATE_KEY],
+
+		}
 	},
 
 	etherscan: {
-		apiKey: 'TF2D7W6BC7H2VQNVVFY3FZ9W8BC9N2SFHJ'
+		apiKey: process.env.ETHERSCAN_API_KEY
 	},
 
 	gasReporter: {
