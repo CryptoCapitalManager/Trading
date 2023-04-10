@@ -70,7 +70,7 @@ contract Trading is Ownable {
         //Manually send 100k USDC tokens to the contract from the account that deployed the contract
         Investment memory tmp = Investment(1000000000, 100000*10**18, block.timestamp);
         userRecord[msg.sender].push(tmp);
-        totalUserOwnershipPoints = 100;
+        totalUserOwnershipPoints = 1000000000;
 
         //TODO Otkomentarisati liniju 76 pre deploya
         //IRouter(_gmxRouter).approvePlugin(_gmxPositionRouter);
