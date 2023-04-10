@@ -273,7 +273,7 @@ contract Trading is Ownable {
      * @dev The function returns the value of all our open positions in USDC using Chainlink Data Feeds.
      * @return value Value of all our open positions in USDC.
      */
-    function getAllPositionValue() public pure returns(uint256) {
+    function getAllPositionValue() internal pure returns(uint256) {
         return 0;
     }
     
