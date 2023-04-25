@@ -67,8 +67,8 @@ contract Trading is Ownable {
 
         for(uint8 i=0; i < _tokens.length; i++) approvedTokens[_tokens[i]] = true;
 
-        //Manually send 100k USDC tokens to the contract from the account that deployed the contract
-        Investment memory tmp = Investment(1000000000, 100000*10**18, block.timestamp);
+        //Manually send 100 USDC tokens to the contract from the account that deployed the contract
+        Investment memory tmp = Investment(1000000000, 100*10**18, block.timestamp);
         userRecord[msg.sender].push(tmp);
         totalUserOwnershipPoints = 1000000000;
 

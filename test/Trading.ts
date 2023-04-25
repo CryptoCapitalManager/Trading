@@ -40,9 +40,9 @@ describe('Trading', () => {
 
         expect(trading.address).to.properAddress;
 
-        await USDC.mintTokenToAddress(trading.address, 100000);
+        await USDC.mintTokenToAddress(trading.address, 100);
 
-        expect(await trading.getContractValue()).to.eq(BigNumber.from('100000000000000000000000'));
+        expect(await trading.getContractValue()).to.eq(BigNumber.from('100000000000000000000'));
 
         let userInvestments: any;
         userInvestments = await trading.getUserInvestments(signers[0].address);
@@ -88,11 +88,11 @@ describe('Trading', () => {
                 .to.emit(trading, 'userDeposit')
             //.withArgs(signers[1].address,[2940000,BigNumber.from('294000000000000000000'), await ethers.provider.getBlockNumber()]);
 
-            expect(await trading.getContractValue()).to.eq(BigNumber.from('100294000000000000000000'));
+            expect(await trading.getContractValue()).to.eq(BigNumber.from('394000000000000000000'));
             expect(await USDC.balanceOf(signers[0].address)).to.eq(BigNumber.from('6000000000000000000'));
 
             let userInvestments = await trading.getUserInvestments(signers[1].address);
-            expect(userInvestments[0].userOwnership).to.eq(2940000);
+            expect(userInvestments[0].userOwnership).to.eq(2940000000);
             expect(userInvestments[0].initialInvestment).to.eq(BigNumber.from('294000000000000000000'));
 
         });
@@ -109,7 +109,7 @@ describe('Trading', () => {
             await USDC.approve(trading.address, BigNumber.from('300000000000000000000'));
             await trading.deposit('300000000000000000000');
 
-            await expect(trading.withdraw(2940000 + 1, 0)).to.be.revertedWith('Insufficient ownership points.');
+            await expect(trading.withdraw(2940000000 + 1, 0)).to.be.revertedWith('Insufficient ownership points.');
         });
 
         it('should withdraw form the contract', async () => {
@@ -121,10 +121,10 @@ describe('Trading', () => {
             await USDC.approve(trading.address, BigNumber.from('300000000000000000000'));
             await trading.deposit('300000000000000000000');
 
-            expect(await trading.withdraw(2940000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
+            expect(await trading.withdraw(2940000000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
             expect(await USDC.balanceOf(signers[1].address)).to.eq(BigNumber.from('147000000000000000000'));
 
-            expect(await trading.withdraw(2940000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
+            expect(await trading.withdraw(2940000000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
             expect(await USDC.balanceOf(signers[1].address)).to.eq(BigNumber.from('294000000000000000000'));
         });
 
@@ -137,21 +137,35 @@ describe('Trading', () => {
             await USDC.approve(trading.address, BigNumber.from('300000000000000000000'));
             await trading.deposit('300000000000000000000');
 
+            
             //MOCKING PROFITABLE TRADES (100%)
-            await USDC.mintTokenToAddress(trading.address, 100294);
+            await USDC.mintTokenToAddress(trading.address, 394);
+            
 
-            expect(await trading.withdraw(2940000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
+            expect(await trading.withdraw(2940000000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
             expect(await USDC.balanceOf(signers[1].address)).to.eq(BigNumber.from('264600000000000000000'));
             expect(await USDC.balanceOf(signers[0].address)).to.eq(BigNumber.from('35400000000000000000'));
 
-            // //MOCKING LOSING TRADES (around 30%)
-            await USDC.burnTokensFromAddress(trading.address, 60088)
+            
+            //MOCKING LOSING TRADES (around 30%)
+            await USDC.burnTokensFromAddress(trading.address, 148)
+            
 
-            expect(await trading.withdraw(2940000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
-            expect(await USDC.balanceOf(signers[1].address)).to.eq(BigNumber.from('458640234854763497659'));
-            expect(await USDC.balanceOf(signers[0].address)).to.eq(BigNumber.from('47160058713690874414'));
+            
+            expect(await trading.withdraw(2940000000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
+            
+            expect(await USDC.balanceOf(signers[1].address)).to.eq(BigNumber.from('458735222672064777328'));
+            expect(await USDC.balanceOf(signers[0].address)).to.eq(BigNumber.from('47183805668016194331'));
+
 
             await expect(trading.withdraw(1, 0)).to.be.revertedWith('Insufficient ownership points.');
+
+            trading = trading.connect(signers[0]);
+            expect(await trading.withdraw(1000000000, 0)).to.emit(trading, 'withdrawnFromInvestment');
+            
+            expect(await(USDC.balanceOf(signers[0].address))).to.eq(BigNumber.from('187264777327935222672'));
+
+            expect(await USDC.balanceOf(trading.address)).to.eq(0);
         });
 
         it('should withdraw form the contract with aditional deposits', async () => {
@@ -175,10 +189,10 @@ describe('Trading', () => {
             trading = trading.connect(signers[1]);
             USDC = USDC.connect(signers[1]);
 
-            expect(await trading.withdraw(2940000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
+            expect(await trading.withdraw(2940000000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
             expect(await USDC.balanceOf(signers[1].address)).to.eq(BigNumber.from('147000000000000000000'));
 
-            expect(await trading.withdraw(2940000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
+            expect(await trading.withdraw(2940000000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
             expect(await USDC.balanceOf(signers[1].address)).to.eq(BigNumber.from('294000000000000000000'));
 
             await expect(trading.withdraw(1, 0)).to.be.revertedWith('Insufficient ownership points.');
@@ -206,17 +220,17 @@ describe('Trading', () => {
             USDC = USDC.connect(signers[1]);
 
             //MOCKING PROFITABLE TRADES (100%)
-            await USDC.mintTokenToAddress(trading.address, 296294);
+            await USDC.mintTokenToAddress(trading.address, 196394);
 
             trading = trading.connect(signers[1]);
             USDC = USDC.connect(signers[1]);
 
-            expect(await trading.withdraw(2940000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
+            expect(await trading.withdraw(2940000000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
             expect(await USDC.balanceOf(signers[1].address)).to.eq(BigNumber.from('264600000000000000000'));
             expect(await USDC.balanceOf(signers[0].address)).to.eq(BigNumber.from('4035400000000000000000'));
 
             //NEW DEPOSIT
-            USDC.mintTokenToAddress(signers[3].address, 200000);
+            USDC.mintTokenToAddress(signers[3].address, 50000);
 
             trading = trading.connect(signers[3]);
             USDC = USDC.connect(signers[3]);
@@ -228,13 +242,36 @@ describe('Trading', () => {
             USDC = USDC.connect(signers[1]);
 
             //MOCKING LOSING TRADES (around 30%)
-            await USDC.burnTokensFromAddress(trading.address, 177688);
-
-            expect(await trading.withdraw(2940000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
-            expect(await USDC.balanceOf(signers[1].address)).to.eq(BigNumber.from('464031422717193674040'));
-            expect(await USDC.balanceOf(signers[0].address)).to.eq(BigNumber.from('5048507855679298418510'));
+            await USDC.burnTokensFromAddress(trading.address, 132448);
+            
+            expect(await trading.withdraw(2940000000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
+            expect(await USDC.balanceOf(signers[1].address)).to.eq(BigNumber.from('458640106547314346288'));
+            expect(await USDC.balanceOf(signers[0].address)).to.eq(BigNumber.from('5047160026636828586571'));
 
             await expect(trading.withdraw(1, 0)).to.be.revertedWith('Insufficient ownership points.');
+
+            trading = trading.connect(signers[2]);
+            
+            expect(await trading.withdraw(1960000000000, 0)).to.emit(trading, 'withdrawnFromInvestment');
+            expect(await USDC.balanceOf(signers[2].address)).to.eq(BigNumber.from('258720142063085795050443'));
+            expect(await USDC.balanceOf(signers[0].address)).to.eq(BigNumber.from('20727195542408277349181'));
+
+            await expect(trading.withdraw(1, 0)).to.be.revertedWith('Insufficient ownership points.');
+
+            trading = trading.connect(signers[3]);
+
+            expect(await trading.withdraw(245000000000, 0)).to.emit(trading, 'withdrawnFromInvestment');
+            expect(await USDC.balanceOf(signers[3].address)).to.eq(BigNumber.from('34300022197357155476632'));
+            expect(await USDC.balanceOf(signers[0].address)).to.eq(BigNumber.from('20727195542408277349181'));
+
+            await expect(trading.withdraw(1, 0)).to.be.revertedWith('Insufficient ownership points.');
+
+            trading = trading.connect(signers[0]);
+            expect(await trading.withdraw(1000000000, 0)).to.emit(trading, 'withdrawnFromInvestment');
+            
+            expect(await(USDC.balanceOf(signers[0].address))).to.eq(BigNumber.from('20867195633009735126637'));
+
+            expect(await USDC.balanceOf(trading.address)).to.eq(0);
         });
     });
 
@@ -282,7 +319,7 @@ describe('Trading', () => {
 
             let userInvestment = await trading.getUserInvestments(signers[1].address);
             expect(userInvestment[1].initialInvestment).to.eq(BigNumber.from('288120000000000000000'));
-            expect(userInvestment[1].userOwnership).to.eq(2881200);
+            expect(userInvestment[1].userOwnership).to.eq(2881200000);
         });
     });
 });
