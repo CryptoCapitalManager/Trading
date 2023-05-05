@@ -16,7 +16,7 @@ struct Investment {
     uint256 annualFeeColectedTime;
 }
 
-/// @author Crypto Capital Manager
+/// @author Investiva
 /// @title Trading
 contract Trading is Ownable {
     ERC20 internal immutable USDC_CONTRACT;
@@ -72,9 +72,9 @@ contract Trading is Ownable {
         userRecord[msg.sender].push(tmp);
         totalUserOwnershipPoints = 1000000000;
 
-        //TODO Otkomentarisati liniju 76 pre deploya
-        //IRouter(_gmxRouter).approvePlugin(_gmxPositionRouter);
+        IRouter(_gmxRouter).approvePlugin(_gmxPositionRouter);
         ERC20(_USDC_ADDRESS).approve(_gmxRouter, type(uint256).max);
+        ERC20(_USDC_ADDRESS).approve(_gmxPositionRouter, type(uint256).max);
     }
 
     //USER FUNCTIONS
@@ -224,8 +224,6 @@ contract Trading is Ownable {
     //TODO
     function enterPositionPerpetual(address[] memory _path, address _indexToken, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, 
         bool _isLong, uint256 _acceptablePrice, uint256 _executionFee, bytes32 _referralCode, address _callbackTarget) external onlyOwner{
-        
-        require(approvedTokens[_path[0]] == true, "You can't trade tokens that are not approved.");
 
         positionRouter.createIncreasePosition(
             _path,
@@ -261,13 +259,6 @@ contract Trading is Ownable {
     }
 
     //UTILS
-    //TODO
-
-    function giveApproval (address tokenAddress, address spender, uint256 amount) external onlyOwner {
-        require(approvedTokens[tokenAddress] == true,"You can't give approval to this contract");
-        
-        ERC20(tokenAddress).approve(spender, amount);
-    }
 
     /**
      * @dev The function returns the value of all our open positions in USDC using Chainlink Data Feeds.
