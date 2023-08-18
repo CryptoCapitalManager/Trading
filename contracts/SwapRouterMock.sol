@@ -75,7 +75,7 @@ contract SwapRouterMock is ISwapRouter {
     }
 
     function exactInput(ExactInputParams calldata params) external override payable returns (uint256 amountOut){
-        if(params.amountIn == 1000*10**18){
+        if(params.amountIn == 1000*10**6){
             USDC_CONTRACT.transferFrom(msg.sender, address(this), params.amountIn);
 
             amountOut = (((params.amountIn * (1000000-3000)/1000000)) * (1000000-3000)/1000000)/2;

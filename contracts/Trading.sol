@@ -8,6 +8,8 @@ import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
 import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 import '../gmx-contracts-interfaces/IRouter.sol';
 import '../gmx-contracts-interfaces/IPositionRouter.sol';
+import '../contracts/RequestAction.sol';
+
 
 
 struct Investment {
@@ -20,6 +22,7 @@ struct Investment {
 /// @title Trading
 contract Trading is Ownable {
     ERC20 internal immutable USDC_CONTRACT;
+    RequestAction internal REQUEST_ACTION_CONTRACT;
     uint256 internal MAX_ASSETS_DEPOSITED;
     mapping(address => Investment[]) internal userRecord;
     uint256 internal totalUserOwnershipPoints;
@@ -27,7 +30,8 @@ contract Trading is Ownable {
     mapping (address => bool) internal approvedTokens;
     ISwapRouter public immutable swapRouter;
     address [] internal openPositions;
-    IPositionRouter internal immutable positionRouter;
+    uint256 internal mockedPositionValue;
+    // IPositionRouter internal immutable positionRouter;
 
     /**
      * @notice This event is emitted when a user deposit occurs. 
@@ -43,7 +47,7 @@ contract Trading is Ownable {
      * @param investment The investment struct that the user is withdrawing from.
      * @dev This event is being emitted so we can listen for it on the backend service and update our database.
      */
-    event withdrawnFromInvestment (address user, Investment investment, uint256 amount);
+    event withdrawnFromInvestment (address user, Investment investment, uint256 amount, uint256 USDC_AMOUNT);
 
     /**
      * @param user The user account that we are getting our fees from.
@@ -61,20 +65,20 @@ contract Trading is Ownable {
      */
     constructor (address _USDC_ADDRESS, address[] memory _tokens, address _swapRouterAddress, address _gmxRouter, address _gmxPositionRouter) {
         USDC_CONTRACT = ERC20(_USDC_ADDRESS);
-        MAX_ASSETS_DEPOSITED = 10000000*10**18;
+        MAX_ASSETS_DEPOSITED = 10000000*10**6;
         swapRouter = ISwapRouter(_swapRouterAddress);
-        positionRouter = IPositionRouter(_gmxPositionRouter);
+        // positionRouter = IPositionRouter(_gmxPositionRouter);
 
         for(uint8 i=0; i < _tokens.length; i++) approvedTokens[_tokens[i]] = true;
 
         //Manually send 100 USDC tokens to the contract from the account that deployed the contract
-        Investment memory tmp = Investment(1000000000, 100*10**18, block.timestamp);
+        Investment memory tmp = Investment(1000000000, 100*10**6, block.timestamp);
         userRecord[msg.sender].push(tmp);
         totalUserOwnershipPoints = 1000000000;
 
-        IRouter(_gmxRouter).approvePlugin(_gmxPositionRouter);
-        ERC20(_USDC_ADDRESS).approve(_gmxRouter, type(uint256).max);
-        ERC20(_USDC_ADDRESS).approve(_gmxPositionRouter, type(uint256).max);
+        // IRouter(_gmxRouter).approvePlugin(_gmxPositionRouter);
+        // ERC20(_USDC_ADDRESS).approve(_gmxRouter, type(uint256).max);
+        // ERC20(_USDC_ADDRESS).approve(_gmxPositionRouter, type(uint256).max);
     }
 
     //USER FUNCTIONS
@@ -88,8 +92,9 @@ contract Trading is Ownable {
      * and the current block height (`block.timestamp`) that we later use when we want to charge our annual fee.
      */
     function deposit(uint256 amount) external {
-        require(amount > 100*10**18 && USDC_CONTRACT.allowance(msg.sender, address(this)) >= amount, "Insufficient amount or allowance.");
-        require(getContractValue() + amount*10**18 <= MAX_ASSETS_DEPOSITED *10**18, "This deposit would exceed our limit.");
+        require(amount >= 100*10**6 && USDC_CONTRACT.allowance(msg.sender, address(this)) >= amount, "Insufficient amount or allowance.");
+        require(getContractValue() + amount*10**6 <= MAX_ASSETS_DEPOSITED *10**6, "This deposit would exceed our limit.");
+        require(getAllPositionValue() == 0,"You can't deposit while we are in trade.");
         
         USDC_CONTRACT.transferFrom(msg.sender, owner(), amount*2/100);
         USDC_CONTRACT.transferFrom(msg.sender, address(this), amount*98/100);
@@ -105,6 +110,23 @@ contract Trading is Ownable {
         userRecord[msg.sender].push(investment);
         
         emit userDeposit(msg.sender, investment);
+    }
+
+    function depositTroughtRequest(uint256 amount,address investor) external  {
+        require(msg.sender == address(REQUEST_ACTION_CONTRACT));
+        require(getAllPositionValue() == 0);
+        
+        USDC_CONTRACT.transferFrom(address(REQUEST_ACTION_CONTRACT), address(this), amount);
+
+        uint256 newtotalUserOwnershipPoints = totalUserOwnershipPoints * getContractValue()  / (getContractValue() - amount);
+        uint256 userOwnershipPoints = newtotalUserOwnershipPoints - totalUserOwnershipPoints;
+        
+        totalUserOwnershipPoints = newtotalUserOwnershipPoints;
+        
+        Investment memory investment = Investment(userOwnershipPoints, amount, block.timestamp);
+        userRecord[investor].push(investment);
+        
+        emit userDeposit(investor, investment);
     }
 
     /**
@@ -136,10 +158,45 @@ contract Trading is Ownable {
         investment.userOwnership -= amount;
         totalUserOwnershipPoints -= amount;
         
+        if(getAllPositionValue() != 0) platformCut += toBeWithdrawn * 5 / 100;
+
         USDC_CONTRACT.transfer(owner(), platformCut);
         USDC_CONTRACT.transfer(msg.sender, toBeWithdrawn - platformCut);
 
-        emit withdrawnFromInvestment(msg.sender, investment, amount);
+        emit withdrawnFromInvestment(msg.sender, investment, amount, toBeWithdrawn);
+    }
+
+    function withdrawTroughtRequest(uint256 amount,address investor, uint investmentNumber) external  {
+        Investment storage investment = userRecord[investor][investmentNumber];
+        
+        require(amount <= investment.userOwnership, "Insufficient ownership points.");
+        
+        uint256 profit = 0;
+        uint256 userUSDC = getContractValue() * investment.userOwnership / totalUserOwnershipPoints;
+        console.log("sol");
+        console.log(getContractValue());
+        console.log(investment.userOwnership);
+        console.log(totalUserOwnershipPoints);
+        console.log(userUSDC);
+        
+        if(investment.initialInvestment < userUSDC ) profit = userUSDC - investment.initialInvestment;
+        
+        uint256 toBeWithdrawn = userUSDC * amount / investment.userOwnership;
+        console.log(amount);
+        console.log(investment.userOwnership);
+        console.log(toBeWithdrawn);
+        console.log("sol");
+        uint platformCut = 0;
+        if(profit != 0) platformCut = profit * 20 / 100 * amount / investment.userOwnership;
+
+        investment.initialInvestment = investment.initialInvestment * ((amount * 1000000000  / investment.userOwnership)/10000000) / 100 ;
+        investment.userOwnership -= amount;
+        totalUserOwnershipPoints -= amount;
+    
+        USDC_CONTRACT.transfer(owner(), platformCut);
+        USDC_CONTRACT.transfer(investor, toBeWithdrawn - platformCut);
+
+        emit withdrawnFromInvestment(investor, investment, amount, toBeWithdrawn);
     }
 
     //TRADING FUNCTIONS
@@ -155,8 +212,7 @@ contract Trading is Ownable {
                 tokenIn: _tokenIn,
                 tokenOut: _tokenOut,
                 fee: poolFee,
-                recipient: msg.sender,
-                deadline: block.timestamp,
+                recipient: address(this),
                 amountIn: _amountIn,
                 amountOutMinimum: _amountOutMinimum,
                 sqrtPriceLimitX96: _sqrtPriceLimitX96
@@ -181,28 +237,29 @@ contract Trading is Ownable {
         // }
     }
 
-    function swapTokensMultihop(uint256 _amountIn, address _tokenIn, address middlemanToken, address _tokenOut, uint24 poolFee1, uint24 poolFee2, uint256 _amountOutMinimum) external onlyOwner returns(uint256 amountOut) {
+    function swapTokensMultihop(uint256 _amountIn, address _tokenIn, address[] calldata middlemanTokens, address _tokenOut, uint24[] calldata poolFees, uint256 _amountOutMinimum) external onlyOwner returns(uint256 amountOut) {
         require(approvedTokens[_tokenIn] == true && approvedTokens[_tokenOut] == true,"You can't trade tokens that are not approved.");
 
-        // // Transfer `amountIn` of DAI to this contract.
-        // TransferHelper.safeTransferFrom(_tokenIn, msg.sender, address(this), _amountIn);
+        bytes memory swapPath;
 
-        // Approve the router to spend DAI.
+
+        if(middlemanTokens.length == 1){
+            swapPath = abi.encodePacked(_tokenIn, poolFees[0], middlemanTokens[0], poolFees[1], _tokenOut);
+        }
+        else if(middlemanTokens.length == 2){
+            swapPath = abi.encodePacked(_tokenIn, poolFees[0], middlemanTokens[0], poolFees[1], middlemanTokens[1], poolFees[2], _tokenOut);
+        }
+        
         TransferHelper.safeApprove(_tokenIn, address(swapRouter), _amountIn);
-
-        // Multiple pool swaps are encoded through bytes called a `path`. A path is a sequence of token addresses and poolFees that define the pools used in the swaps.
-        // The format for pool encoding is (tokenIn, fee, tokenOut/tokenIn, fee, tokenOut) where tokenIn/tokenOut parameter is the shared token across the pools.
-        // Since we are swapping DAI to USDC and then USDC to WETH9 the path encoding is (DAI, 0.3%, USDC, 0.3%, WETH9).
+        
         ISwapRouter.ExactInputParams memory params =
             ISwapRouter.ExactInputParams({
-                path: abi.encodePacked(_tokenIn, poolFee1, middlemanToken, poolFee2, _tokenOut),
-                recipient: msg.sender,
-                deadline: block.timestamp,
+                path: swapPath,
+                recipient: address(this),
                 amountIn: _amountIn,
                 amountOutMinimum: _amountOutMinimum
             });
 
-        // Executes the swap.
         amountOut = swapRouter.exactInput(params);
 
         /// TODO videti kako implemenitrati automatsko zatvaranje perpetual pozicija i odredjivanje njihove vrednosti
@@ -221,42 +278,42 @@ contract Trading is Ownable {
         // }
     }
 
-    //TODO
-    function enterPositionPerpetual(address[] memory _path, address _indexToken, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, 
-        bool _isLong, uint256 _acceptablePrice, uint256 _executionFee, bytes32 _referralCode, address _callbackTarget) external onlyOwner{
+    // //TODO
+    // function enterPositionPerpetual(address[] memory _path, address _indexToken, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, 
+    //     bool _isLong, uint256 _acceptablePrice, uint256 _executionFee, bytes32 _referralCode, address _callbackTarget) external onlyOwner{
 
-        positionRouter.createIncreasePosition(
-            _path,
-            _indexToken,
-            _amountIn,
-            _minOut,
-            _sizeDelta,
-            _isLong,
-            _acceptablePrice,
-            _executionFee,
-            _referralCode,
-            _callbackTarget
-        );
-    }
+    //     positionRouter.createIncreasePosition(
+    //         _path,
+    //         _indexToken,
+    //         _amountIn,
+    //         _minOut,
+    //         _sizeDelta,
+    //         _isLong,
+    //         _acceptablePrice,
+    //         _executionFee,
+    //         _referralCode,
+    //         _callbackTarget
+    //     );
+    // }
 
-    //TODO
-    function closePositionPerpetual(address[] memory _path, address _indexToken, uint256 _collateralDelta, uint256 _sizeDelta,
-        bool _isLong, address _receiver, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee, bool _withdrawETH, address _callbackTarget) external onlyOwner {
+    // //TODO
+    // function closePositionPerpetual(address[] memory _path, address _indexToken, uint256 _collateralDelta, uint256 _sizeDelta,
+    //     bool _isLong, address _receiver, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee, bool _withdrawETH, address _callbackTarget) external onlyOwner {
         
-        positionRouter.createDecreasePosition(
-            _path,
-            _indexToken,
-            _collateralDelta,
-            _sizeDelta,
-            _isLong,
-            _receiver,
-            _acceptablePrice,
-            _minOut,
-            _executionFee,
-            _withdrawETH,
-            _callbackTarget
-        );
-    }
+    //     positionRouter.createDecreasePosition(
+    //         _path,
+    //         _indexToken,
+    //         _collateralDelta,
+    //         _sizeDelta,
+    //         _isLong,
+    //         _receiver,
+    //         _acceptablePrice,
+    //         _minOut,
+    //         _executionFee,
+    //         _withdrawETH,
+    //         _callbackTarget
+    //     );
+    // }
 
     //UTILS
 
@@ -264,8 +321,8 @@ contract Trading is Ownable {
      * @dev The function returns the value of all our open positions in USDC using Chainlink Data Feeds.
      * @return value Value of all our open positions in USDC.
      */
-    function getAllPositionValue() internal pure returns(uint256) {
-        return 0;
+    function getAllPositionValue() internal view returns(uint256) {
+        return mockedPositionValue;
     }
     
     /**
@@ -325,6 +382,15 @@ contract Trading is Ownable {
      */
     function setMaxAssetsDeposited(uint256 amount) external onlyOwner {
         MAX_ASSETS_DEPOSITED = amount;
+    }
+
+    function setRequestActionAddress(address _address) external onlyOwner {
+        require (address(REQUEST_ACTION_CONTRACT) == address(0));
+        REQUEST_ACTION_CONTRACT= RequestAction(_address);
+    }
+
+    function setmockedPositionValue(uint256 amount) external {
+        mockedPositionValue = amount;
     }
 
     //GETTERS

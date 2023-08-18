@@ -41,6 +41,10 @@ const config: HardhatUserConfig = {
 		goerli: {
 			url: process.env.INFURA_GOERLI,
 			accounts: [process.env.PRIVATE_KEY],
+			//accounts: ['84566bacd33cf8bb537e50913380e89827028a148077d6fc92fd3717fa65e63f'],
+			//accounts: ['457e7e296c7262744d719c42ca109ac313e6dca0b438c8294afa3bdb88341c7c'],
+			
+			allowUnlimitedContractSize: true,
 		},
 		arbitrum: {
 			url: '',
@@ -54,7 +58,7 @@ const config: HardhatUserConfig = {
 	},
 
 	gasReporter: {
-		enabled: false 
+		enabled: false
 	}
 };
 
