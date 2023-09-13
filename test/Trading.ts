@@ -89,7 +89,7 @@ describe('Trading', () => {
         expect(trading.address).to.properAddress;
 
         const requestActionFactory = await ethers.getContractFactory('RequestAction', signers[0]);
-        requestAction = (await requestActionFactory.deploy(trading.address,USDC.address)) as RequestAction;
+        requestAction = (await requestActionFactory.deploy(trading.address, USDC.address)) as RequestAction;
         await requestAction.deployed();
 
         expect(requestAction.address).to.properAddress;
@@ -356,6 +356,43 @@ describe('Trading', () => {
 
             expect(await USDC.balanceOf(trading.address)).to.eq(0);
         });
+
+        it.only('should withdraw form multiple investments in one transaction', async () => {
+            USDC.mintTokenToAddress(signers[1].address, 3000);
+
+            trading = trading.connect(signers[1]);
+            USDC = USDC.connect(signers[1]);
+
+            await USDC.approve(trading.address, BigNumber.from('1500000000'));
+            await trading.deposit('1500000000');
+
+            await USDC.approve(trading.address, BigNumber.from('700000000'));
+            await trading.deposit('700000000');
+
+            await USDC.approve(trading.address, BigNumber.from('800000000'));
+            await trading.deposit('800000000');
+
+            const x = await trading.getUserInvestments(signers[1].address);
+
+            let withdrawObjects = [];
+            let i = 0;
+
+            while (x[i] != undefined) {
+                let amount = BigNumber.from(x[i].userOwnership);
+                withdrawObjects.push({ amount: amount, investmentNumber: i });
+                i++;
+            }
+
+            await trading.withdrawMultiple(withdrawObjects, 3);
+
+            const userInvestments = await trading.getUserInvestments(signers[1].address);            
+            i = 0;
+
+            while (userInvestments[i] != undefined) {
+                expect(userInvestments[i].userOwnership).to.eq(0);
+                i++;
+            }
+        });
     });
 
     describe('collecting user fees', async () => {
@@ -465,7 +502,7 @@ describe('Trading', () => {
             USDC.mintTokenToAddress(trading.address, 900);
             CRV.mintTokenToAddress(swapRouterMock.address, 1000);
 
-            await trading.swapTokensMultihop(BigNumber.from('1000000000'), USDC.address, [UNI.address], CRV.address, [3000,3000], 0);
+            await trading.swapTokensMultihop(BigNumber.from('1000000000'), USDC.address, [UNI.address], CRV.address, [3000, 3000], 0);
 
             expect(await USDC.balanceOf(trading.address)).to.eq(0);
             expect(await USDC.balanceOf(swapRouterMock.address)).to.eq(BigNumber.from('1000000000'));
@@ -473,7 +510,7 @@ describe('Trading', () => {
             expect(await CRV.balanceOf(trading.address)).to.eq(BigNumber.from('497004500'));
             expect(await CRV.balanceOf(swapRouterMock.address)).to.eq(BigNumber.from('502995500'));
 
-            await trading.swapTokensMultihop(BigNumber.from('497004500'), CRV.address, [UNI.address], USDC.address, [3000,3000], 0);
+            await trading.swapTokensMultihop(BigNumber.from('497004500'), CRV.address, [UNI.address], USDC.address, [3000, 3000], 0);
 
             expect(await USDC.balanceOf(trading.address)).to.eq(BigNumber.from('988053890'));
             expect(await USDC.balanceOf(swapRouterMock.address)).to.eq(BigNumber.from('11946110'));

@@ -15,8 +15,8 @@ async function main() {
 
     //await USDC.approve('0x47D3a0dA4068C96A2e196B85c5BceB85d26F9c16',BigNumber.from('1000000000000'));
     
-    //await trading.deposit(BigNumber.from('15000000000'));
-    await trading.withdraw(BigNumber.from('147000000000'),3)
+    await trading.deposit(BigNumber.from('100000000'));
+    //await trading.withdraw(BigNumber.from('147000000000'),3)
     //const x = await trading.getUserInvestments('0x82B7F581E53E9ef9b009833d53a914c626822647');
     //console.log(x);
     //await trading.deposit()

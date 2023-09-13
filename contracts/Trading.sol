@@ -18,6 +18,11 @@ struct Investment {
     uint256 annualFeeColectedTime;
 }
 
+struct WithdrawObject {
+    uint256 amount;
+    uint256 investmentNumber;
+}
+
 /// @author Investiva
 /// @title Trading
 contract Trading is Ownable {
@@ -139,7 +144,7 @@ contract Trading is Ownable {
      * also buring `amount` of userOwnershipPoints. 
      * At the end of the transaction, we are transferring us our cut and the user his USDC.
      */
-    function withdraw(uint256 amount, uint256 investmentNumber) external {
+    function withdraw(uint256 amount, uint256 investmentNumber) public {
         Investment storage investment = userRecord[msg.sender][investmentNumber];
         
         require(amount <= investment.userOwnership, "Insufficient ownership points.");
@@ -164,6 +169,12 @@ contract Trading is Ownable {
         USDC_CONTRACT.transfer(msg.sender, toBeWithdrawn - platformCut);
 
         emit withdrawnFromInvestment(msg.sender, investment, amount, toBeWithdrawn);
+    }
+
+    function withdrawMultiple(WithdrawObject[] memory withdrawals,uint256 lenght) external {
+        for(uint256 i = 0; i<lenght; i++){
+            withdraw(withdrawals[i].amount, withdrawals[i].investmentNumber);
+        }
     }
 
     function withdrawTroughtRequest(uint256 amount,address investor, uint investmentNumber) external  {

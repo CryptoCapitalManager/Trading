@@ -50,6 +50,10 @@ const config: HardhatUserConfig = {
 			url: '',
 			accounts: [process.env.PRIVATE_KEY],
 
+		},
+		arbitrumgoerli: {
+			url: 'https://arbitrum-goerli.publicnode.com',
+			accounts: [process.env.PRIVATE_KEY],
 		}
 	},
 
