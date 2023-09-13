@@ -357,7 +357,7 @@ describe('Trading', () => {
             expect(await USDC.balanceOf(trading.address)).to.eq(0);
         });
 
-        it.only('should withdraw form multiple investments in one transaction', async () => {
+        it('should withdraw form multiple investments in one transaction', async () => {
             USDC.mintTokenToAddress(signers[1].address, 3000);
 
             trading = trading.connect(signers[1]);
@@ -392,6 +392,8 @@ describe('Trading', () => {
                 expect(userInvestments[i].userOwnership).to.eq(0);
                 i++;
             }
+
+            expect(await USDC.balanceOf(signers[1].address)).to.eq(BigNumber.from('2940000000'));
         });
     });
 

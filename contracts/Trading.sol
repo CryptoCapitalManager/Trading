@@ -184,19 +184,10 @@ contract Trading is Ownable {
         
         uint256 profit = 0;
         uint256 userUSDC = getContractValue() * investment.userOwnership / totalUserOwnershipPoints;
-        console.log("sol");
-        console.log(getContractValue());
-        console.log(investment.userOwnership);
-        console.log(totalUserOwnershipPoints);
-        console.log(userUSDC);
         
         if(investment.initialInvestment < userUSDC ) profit = userUSDC - investment.initialInvestment;
         
         uint256 toBeWithdrawn = userUSDC * amount / investment.userOwnership;
-        console.log(amount);
-        console.log(investment.userOwnership);
-        console.log(toBeWithdrawn);
-        console.log("sol");
         uint platformCut = 0;
         if(profit != 0) platformCut = profit * 20 / 100 * amount / investment.userOwnership;
 
