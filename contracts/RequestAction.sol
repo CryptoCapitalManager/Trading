@@ -33,7 +33,7 @@ contract RequestAction is Ownable {
     event userWithdrawalCanceled (uint requestNumber);
 
     constructor(address _tradingAddress, address _USDC_ADDRESS){
-        tradingContract = Trading(_tradingAddress);
+        tradingContract = Trading(payable(_tradingAddress));
         USDC_CONTRACT = ERC20(_USDC_ADDRESS);
     }
 
