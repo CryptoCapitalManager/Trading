@@ -1,10 +1,8 @@
 import { ethers } from 'hardhat';
-import readline from 'readline/promises';
 import { IReader__factory } from '../../typechain';
 import { getChainAddresses } from './addresses';
 import { getMarket } from './markets';
 import { getTokenInfo } from './tokens';
-import { BigNumber } from 'ethers';
 import { hashData, toDecimalString } from './utils';
 
 export function getPositionKey(

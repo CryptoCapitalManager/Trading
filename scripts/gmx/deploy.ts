@@ -1,8 +1,8 @@
+import { isAddress } from 'ethers/lib/utils';
 import { ethers } from 'hardhat';
 import readline from 'readline/promises';
 import { Trading, Trading__factory } from '../../typechain';
 import { getChainAddresses } from './addresses';
-import { isAddress } from 'ethers/lib/utils';
 
 export async function deploy(): Promise<Trading> {
   const [wallet] = await ethers.getSigners();

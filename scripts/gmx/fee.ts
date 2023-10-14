@@ -1,8 +1,8 @@
+import { Signer } from 'ethers';
 import { ethers } from 'hardhat';
 import { IDataStore, IDataStore__factory } from '../../typechain';
 import { getChainAddresses } from './addresses';
 import { applyFactor, hashString } from './utils';
-import { Signer } from 'ethers';
 
 export const INCREASE_ORDER_GAS_LIMIT_KEY = hashString(
   'INCREASE_ORDER_GAS_LIMIT'

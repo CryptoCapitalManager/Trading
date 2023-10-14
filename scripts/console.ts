@@ -1,8 +1,9 @@
 import readline from 'readline/promises';
-import { deployOrConnect } from './deploy';
-import { displayMarkets } from './markets';
-import { displayPositions } from './position';
-import { displayBalance, depositUSDC, increasePosition, decreasePosition } from './trading';
+import { deployOrConnect } from './gmx/deploy';
+import { displayMarkets } from './gmx/markets';
+import { decreasePosition, increasePosition } from './gmx/modifyPosition';
+import { displayPositions } from './gmx/queryPosition';
+import { depositUSDC, displayBalance } from './gmx/balance';
 
 async function main() {
   const rl = readline.createInterface({

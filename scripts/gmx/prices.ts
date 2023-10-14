@@ -1,6 +1,6 @@
+import { BigNumber } from 'ethers';
 import { network } from 'hardhat';
 import { TokenInfo } from './tokens';
-import { BigNumber } from 'ethers';
 import { toDecimal } from './utils';
 
 const ARB_GOERLI_URL =

@@ -1,5 +1,5 @@
 import { ethers } from 'hardhat';
-import { ERC20__factory, IERC20__factory } from '../../typechain';
+import { ERC20__factory } from '../../typechain';
 
 export type TokenInfo = {
   address: string;
