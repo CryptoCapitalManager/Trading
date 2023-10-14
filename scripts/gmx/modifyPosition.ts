@@ -33,11 +33,11 @@ export async function increasePosition(
   const swapPath = await swapPathQuestion(rl);
 
   const marketIndexPrice = await getTokenPrice(market.index);
-  // include 3% slippage
+  // include 1% slippage
   // TODO: figure out if needed or if we can reduce
   const acceptablePrice = isLong
-    ? marketIndexPrice.maxPriceRaw.mul(103).div(100)
-    : marketIndexPrice.minPriceRaw.mul(97).div(100);
+    ? marketIndexPrice.maxPriceRaw.mul(101).div(100)
+    : marketIndexPrice.minPriceRaw.mul(99).div(100);
 
   const executionFee = await getExecutionFee(true, swapPath.length);
   // Make sure Trading contract has enough ETH for executionFee
@@ -79,11 +79,11 @@ export async function decreasePosition(
   const swapPath = await swapPathQuestion(rl);
 
   const marketIndexPrice = await getTokenPrice(marketInfo.index);
-  // include 3% slippage
+  // include 1% slippage
   // TODO: figure out if needed or if we can reduce
   const acceptablePrice = isLong
-    ? marketIndexPrice.maxPriceRaw.mul(97).div(100)
-    : marketIndexPrice.minPriceRaw.mul(103).div(100);
+    ? marketIndexPrice.maxPriceRaw.mul(99).div(100)
+    : marketIndexPrice.minPriceRaw.mul(101).div(100);
 
   const executionFee = await getExecutionFee(false, swapPath.length + 1);
   // Make sure Trading contract has enough ETH for executionFee
