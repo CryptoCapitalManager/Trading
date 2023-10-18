@@ -13,13 +13,10 @@ export async function deploy(): Promise<Trading> {
   const trading = await tradingFactory
     .deploy(
       addresses.tokens.usdc,
-      [
-        addresses.tokens.weth,
-        addresses.tokens.usdc,
-        addresses.tokens.usdt,
-        addresses.tokens.dai,
-        addresses.tokens.wbtc,
-      ],
+      ['weth', 'usdc', 'usdt', 'dai', 'wbtc'].map((token) => ({
+        token: addresses.tokens[token],
+        priceFeedAggregator: addresses.chainlink[token],
+      })),
       ethers.constants.AddressZero,
       addresses.gmx.reader,
       addresses.gmx.exchangeRouter

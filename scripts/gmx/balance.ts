@@ -27,17 +27,32 @@ export async function displayBalance(trading: Trading) {
   const [wallet] = await ethers.getSigners();
   const addresses = getChainAddresses();
   const usdc = ERC20__factory.connect(addresses.tokens.usdc, wallet);
+  const usdcDecimals = await usdc.decimals();
   const weth = ERC20__factory.connect(addresses.tokens.weth, wallet);
 
   const ethBalance = await ethers.provider.getBalance(trading.address);
-  console.log(`ETH:  ${toDecimalString(ethBalance, 18)}`);
+  console.log(`ETH: `, toDecimalString(ethBalance, 18));
   const wethBalance = await weth.balanceOf(trading.address);
-  console.log(`WETH: ${toDecimalString(wethBalance, await weth.decimals())}`);
+  console.log(`WETH:`, toDecimalString(wethBalance, await weth.decimals()));
   const usdcBalance = await usdc.balanceOf(trading.address);
-  console.log(`USDC: ${toDecimalString(usdcBalance, await usdc.decimals())}`);
+  console.log(`USDC:`, toDecimalString(usdcBalance, usdcDecimals));
 
-  const tokenPrices = await getRawPrices();
-  const positionUsd = await trading.getGmxPositionsValueUsd(tokenPrices);
-  console.log(`Positions USD: ${toDecimalString(positionUsd, 30)}`);
+  const gmxPrices = await getRawPrices();
+  const gmxPositionUsd = await trading.getGmxPositionsValueUsd(gmxPrices);
+  console.log(
+    `GMX Positions USD (GMX prices):`,
+    toDecimalString(gmxPositionUsd, 30)
+  );
+  const allPositionValue = await trading.getAllPositionValue();
+  console.log(
+    `All Position Value (Chainlink prices):`,
+    toDecimalString(allPositionValue, usdcDecimals)
+  );
+  const totalValue = await trading.getContractValue();
+  console.log(
+    `Total value in USDC:`,
+    toDecimalString(totalValue, usdcDecimals)
+  );
+
   await displayPositions(trading.address);
 }

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
@@ -30,6 +31,11 @@ struct WithdrawObject {
     uint256 investmentNumber;
 }
 
+struct TokenPriceFeed {
+    address token;
+    address priceFeedAggregator;
+}
+
 /// @author Investiva
 /// @title Trading
 contract Trading is Ownable {
@@ -42,7 +48,6 @@ contract Trading is Ownable {
     mapping (address => bool) internal approvedTokens;
     ISwapRouter public immutable swapRouter;
     address [] internal openPositions;
-    uint256 internal mockedPositionValue;
 
     bytes32 public constant ACCOUNT_POSITION_LIST = keccak256(abi.encode("ACCOUNT_POSITION_LIST"));
 
@@ -51,6 +56,9 @@ contract Trading is Ownable {
     IDataStore internal gmxDataStore;
     address internal gmxOrderVault;
     address internal gmxReferralStorage;
+
+    address[] internal chainlinkPriceFeedTokens;
+    mapping(address => AggregatorV3Interface) internal chainlinkPriceFeedAggregator;
 
     /**
      * @notice This event is emitted when a user deposit occurs. 
@@ -82,12 +90,17 @@ contract Trading is Ownable {
      * After contract deployment, we should manually send 100k USDC tokens to the contract from the account that deployed the contract.
      * With this little compromise we were able to implement much more gas-efficient logic in our smart contract.
      */
-    constructor(address _USDC_ADDRESS, address[] memory _tokens, address _swapRouterAddress, address _gmxReader, address _gmxRouter) {
+    constructor(address _USDC_ADDRESS, TokenPriceFeed[] memory _tokens, address _swapRouterAddress, address _gmxReader, address _gmxRouter) {
         USDC_CONTRACT = ERC20(_USDC_ADDRESS);
         MAX_ASSETS_DEPOSITED = 10000000*10**6;
         swapRouter = ISwapRouter(_swapRouterAddress);
 
-        for(uint8 i=0; i < _tokens.length; i++) approvedTokens[_tokens[i]] = true;
+        for(uint8 i=0; i < _tokens.length; i++) {
+            TokenPriceFeed memory priceFeed = _tokens[i];
+            approvedTokens[priceFeed.token] = true;
+            chainlinkPriceFeedTokens.push(priceFeed.token);
+            chainlinkPriceFeedAggregator[priceFeed.token] = AggregatorV3Interface(priceFeed.priceFeedAggregator);
+        }
 
         //Manually send 100 USDC tokens to the contract from the account that deployed the contract
         Investment memory tmp = Investment(1000000000, 100*10**6, block.timestamp);
@@ -103,6 +116,9 @@ contract Trading is Ownable {
         gmxReferralStorage = gmxOrderHandler.referralStorage();
     }
 
+    /**
+     * @notice Required in order to receive leftover fee from GMX.
+     */
     receive() external payable {}
 
     //USER FUNCTIONS
@@ -305,8 +321,8 @@ contract Trading is Ownable {
         address market,
         bool isLong,
         address[] memory swapPath,
-        uint256 initialCollateralUsd,
-        uint256 positionSizeUsd,
+        uint256 initialCollateralDeltaUsdc,
+        uint256 positionDeltaUsd,
         uint256 acceptablePrice,
         uint256 executionFee
     ) external payable onlyOwner {
@@ -314,20 +330,20 @@ contract Trading is Ownable {
         gmxRouter.sendWnt{value: executionFee}(gmxOrderVault, executionFee);
 
         // Pre transfer USDC to the OrderValut
-        USDC_CONTRACT.transfer(gmxOrderVault, initialCollateralUsd);
+        USDC_CONTRACT.transfer(gmxOrderVault, initialCollateralDeltaUsdc);
 
         // Create Order
         Order.CreateOrderParams memory order = Order.CreateOrderParams(
             Order.CreateOrderParamsAddresses(
                 address(this), // receiver
                 address(0), // callbackContract, consider using this
-                address(0), // uiFeeReceiver, fallback to receiver
+                address(0), // uiFeeReceiver
                 market,
                 address(USDC_CONTRACT),
                 swapPath
             ),
             Order.CreateOrderParamsNumbers(
-                positionSizeUsd, // sizeDeltaUsd
+                positionDeltaUsd, // sizeDeltaUsd
                 0, // initialCollateralDeltaAmount
                 0, // triggerPrice
                 acceptablePrice,
@@ -350,7 +366,7 @@ contract Trading is Ownable {
         address collateralToken,
         address[] memory swapPath,
         uint256 collateralDelta,
-        uint256 positionSizeUsd,
+        uint256 positionDeltaUsd,
         uint256 acceptablePrice,
         uint256 executionFee
     ) external payable onlyOwner {
@@ -362,13 +378,13 @@ contract Trading is Ownable {
             Order.CreateOrderParamsAddresses(
                 address(this), // receiver
                 address(0), // callbackContract, consider using this
-                address(0), // uiFeeReceiver, fallback to receiver
+                address(0), // uiFeeReceiver
                 market,
                 collateralToken, // initialCollateralToken
                 swapPath
             ),
             Order.CreateOrderParamsNumbers(
-                positionSizeUsd, // sizeDeltaUsd
+                positionDeltaUsd, // sizeDeltaUsd
                 collateralDelta, // initialCollateralDeltaAmount
                 0, // triggerPrice
                 acceptablePrice,
@@ -431,7 +447,7 @@ contract Trading is Ownable {
 
     function extractMarketPrices(
         Market.Props memory market,
-        Price.TokenPrice[] calldata tokenPrices
+        Price.TokenPrice[] memory tokenPrices
     ) internal pure returns (Market.MarketPrices memory marketPrices) {
         for (uint256 i; i < tokenPrices.length; i++) {
             Price.TokenPrice memory tokenPrice = tokenPrices[i];
@@ -451,8 +467,8 @@ contract Trading is Ownable {
     }
 
     function getGmxPositionsValueUsd(
-        Price.TokenPrice[] calldata tokenPrices
-    ) external view returns (uint256) {
+        Price.TokenPrice[] memory tokenPrices
+    ) public view returns (uint256) {
         uint256 totalValue = 0;
 
         bytes32[] memory positionKeys = getGmxPositionKeys();
@@ -477,7 +493,8 @@ contract Trading is Ownable {
                     marketPrices,
                     position.addresses.collateralToken);
             // assume min price for collateral
-            uint256 collateralUsd = position.numbers.collateralAmount * collateralPrice.min;
+            uint256 collateralUsd = position.numbers.collateralAmount *
+                collateralPrice.min;
 
             // Calculate PNL in USD
             // TODO: consider using second value: uncappedPositionPnlUsd
@@ -494,58 +511,66 @@ contract Trading is Ownable {
         return totalValue;
     }
 
-    // //TODO
-    // function enterPositionPerpetual(address[] memory _path, address _indexToken, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, 
-    //     bool _isLong, uint256 _acceptablePrice, uint256 _executionFee, bytes32 _referralCode, address _callbackTarget) external onlyOwner{
-
-    //     positionRouter.createIncreasePosition(
-    //         _path,
-    //         _indexToken,
-    //         _amountIn,
-    //         _minOut,
-    //         _sizeDelta,
-    //         _isLong,
-    //         _acceptablePrice,
-    //         _executionFee,
-    //         _referralCode,
-    //         _callbackTarget
-    //     );
-    // }
-
-    // //TODO
-    // function closePositionPerpetual(address[] memory _path, address _indexToken, uint256 _collateralDelta, uint256 _sizeDelta,
-    //     bool _isLong, address _receiver, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee, bool _withdrawETH, address _callbackTarget) external onlyOwner {
-        
-    //     positionRouter.createDecreasePosition(
-    //         _path,
-    //         _indexToken,
-    //         _collateralDelta,
-    //         _sizeDelta,
-    //         _isLong,
-    //         _receiver,
-    //         _acceptablePrice,
-    //         _minOut,
-    //         _executionFee,
-    //         _withdrawETH,
-    //         _callbackTarget
-    //     );
-    // }
-
     //UTILS
+
+    function getTokenPricesFromChainlink()
+        public
+        view
+        returns (Price.TokenPrice[] memory)
+    {
+        Price.TokenPrice[] memory prices = new Price.TokenPrice[](
+            chainlinkPriceFeedTokens.length
+        );
+        for (uint256 i; i < chainlinkPriceFeedTokens.length; i++) {
+            address token = chainlinkPriceFeedTokens[i];
+            AggregatorV3Interface aggregator = chainlinkPriceFeedAggregator[token];
+
+            // TODO: maybe verify the freshness/validity of data
+            // prettier-ignore
+            (
+                /* uint80 roundID */,
+                int answer,
+                /*uint startedAt*/,
+                /*uint timeStamp*/,
+                /*uint80 answeredInRound*/
+            ) = aggregator.latestRoundData();
+            if (answer < 0) {
+                revert("Invalid price");
+            }
+
+            uint256 price = uint256(answer);
+
+            // Price.TokenPrice should be with (30-token.decimal) decimals
+            uint256 desiredDecimals = 30 - ERC20(token).decimals();
+            if (desiredDecimals > aggregator.decimals()) {
+                price *= 10 ** (desiredDecimals - aggregator.decimals());
+            } else {
+                price /= 10 ** (aggregator.decimals() - desiredDecimals);
+            }
+
+            prices[i] = Price.TokenPrice(token, price, price);
+        }
+        return prices;
+    }
 
     /**
      * @dev The function returns the value of all our open positions in USDC using Chainlink Data Feeds.
      * @return value Value of all our open positions in USDC.
      */
-    function getAllPositionValue() internal view returns(uint256) {
-        return mockedPositionValue;
+    function getAllPositionValue() public view returns(uint256) {
+        uint256 gmxPositionValueUsd = getGmxPositionsValueUsd(
+            getTokenPricesFromChainlink());
+        // The gmxPositionValueUsd is represented with 30 decimals.
+        // Scale it to USDC decimals
+        return gmxPositionValueUsd / (10 ** (30 - USDC_CONTRACT.decimals()));
     }
-    
+
     /**
      * @dev The function returns the total value of all assets on our contract in USDC using Chainlink Data Feeds.
      * @return value Value of all assets on our contract in USDC.
      */
     function getContractValue() public view returns(uint256){
+        // TODO: consider adding value of ETH and/or value of other tokens as well
         return USDC_CONTRACT.balanceOf(address(this)) + getAllPositionValue();
     }
 
@@ -605,8 +630,14 @@ contract Trading is Ownable {
         REQUEST_ACTION_CONTRACT= RequestAction(_address);
     }
 
-    function setmockedPositionValue(uint256 amount) external {
-        mockedPositionValue = amount;
+    function setChainlinkPriceFeedAggregator(
+        address token,
+        address chainlinkPriceFeed
+    ) public onlyOwner {
+        if (address(chainlinkPriceFeedAggregator[token]) == address(0)) {
+            chainlinkPriceFeedTokens.push(token);
+        }
+        chainlinkPriceFeedAggregator[token] = AggregatorV3Interface(chainlinkPriceFeed);
     }
 
     //GETTERS
