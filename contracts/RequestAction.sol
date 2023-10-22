@@ -68,7 +68,7 @@ contract RequestAction is Ownable {
         tradingContract.depositTroughtRequest(depositRequests[requestNumber].amount, depositRequests[requestNumber].investor);
     }
 
-    function requestWithdrawal(uint256 amount, uint256 investmentNumber) external {
+    function requestWithdrawal(uint256 amount, uint256 investmentNumber) public {
         Investment memory tmp = tradingContract.getUserInvestments(msg.sender)[investmentNumber];
 
         require(tmp.userOwnership >= amount, "Insufficient ownership points.");
@@ -78,6 +78,12 @@ contract RequestAction is Ownable {
         withdrawalRequests.push(withdrawalRequest);
 
         emit userWithdrawalRequest(msg.sender, amount, investmentNumber);
+    }
+
+    function requestWithdrawalMultiple(WithdrawObject[] memory withdrawals, uint256 lenght) external {
+        for(uint i = 0; i < lenght; i++){
+            requestWithdrawal(withdrawals[i].amount, withdrawals[i].investmentNumber);
+        }
     }
 
     function cancelWithdrawalRequest(uint requestNumber) external {
