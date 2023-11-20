@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: UNLICENCED
 pragma solidity ^0.8.0;
 
-import "hardhat/console.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
-import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 
 import '../gmx-contracts-interfaces/IRouter.sol';
 import '../gmx-contracts-interfaces/IPositionRouter.sol';
@@ -45,8 +42,6 @@ contract Trading is Ownable {
     mapping(address => Investment[]) internal userRecord;
     uint256 internal totalUserOwnershipPoints;
     address [] internal liquidityPools;
-    mapping (address => bool) internal approvedTokens;
-    ISwapRouter public immutable swapRouter;
     address [] internal openPositions;
 
     bytes32 public constant ACCOUNT_POSITION_LIST = keccak256(abi.encode("ACCOUNT_POSITION_LIST"));
@@ -90,14 +85,12 @@ contract Trading is Ownable {
      * After contract deployment, we should manually send 100k USDC tokens to the contract from the account that deployed the contract.
      * With this little compromise we were able to implement much more gas-efficient logic in our smart contract.
      */
-    constructor(address _USDC_ADDRESS, TokenPriceFeed[] memory _tokens, address _swapRouterAddress, address _gmxReader, address _gmxRouter) {
+    constructor(address _USDC_ADDRESS, TokenPriceFeed[] memory _tokens, address _gmxReader, address _gmxRouter) {
         USDC_CONTRACT = ERC20(_USDC_ADDRESS);
         MAX_ASSETS_DEPOSITED = 10000000*10**6;
-        swapRouter = ISwapRouter(_swapRouterAddress);
 
         for(uint8 i=0; i < _tokens.length; i++) {
             TokenPriceFeed memory priceFeed = _tokens[i];
-            approvedTokens[priceFeed.token] = true;
             chainlinkPriceFeedTokens.push(priceFeed.token);
             chainlinkPriceFeedAggregator[priceFeed.token] = AggregatorV3Interface(priceFeed.priceFeedAggregator);
         }
@@ -237,90 +230,11 @@ contract Trading is Ownable {
     }
 
     //TRADING FUNCTIONS
-    //TODO
-    function swapTokens(uint256 _amountIn, address _tokenIn, address _tokenOut, uint24 poolFee, uint256 _amountOutMinimum, uint160 _sqrtPriceLimitX96) external onlyOwner returns(uint256 amountOut) {
-        require(approvedTokens[_tokenIn] == true && approvedTokens[_tokenOut] == true,"You can't trade tokens that are not approved.");
-        
-        // Approve the router to spend tokenIn.
-        TransferHelper.safeApprove(_tokenIn, address(swapRouter), _amountIn);
-
-        ISwapRouter.ExactInputSingleParams memory params =
-            ISwapRouter.ExactInputSingleParams({
-                tokenIn: _tokenIn,
-                tokenOut: _tokenOut,
-                fee: poolFee,
-                deadline: 0, // TODO: fix
-                recipient: address(this),
-                amountIn: _amountIn,
-                amountOutMinimum: _amountOutMinimum,
-                sqrtPriceLimitX96: _sqrtPriceLimitX96
-            });
-
-        // The call to `exactInputSingle` executes the swap.
-        amountOut = swapRouter.exactInputSingle(params);
-
-        /// TODO videti kako implemenitrati automatsko zatvaranje perpetual pozicija i odredjivanje njihove vrednosti
-        /// ovakvom implementacijom ne bi trebalo da se dizu pare ukoliko smo u aktivnom trade-u
-        
-        // if(_tokenIn == address(USDC_CONTRACT)){
-        //     for(uint8 i = 0; i < 3; i++){
-        //         if(openPositions[i] == address(0)) openPositions[i] = _tokenOut;
-        //     }
-        // }
-        
-        // else if(ERC20(_tokenIn).balanceOf(address(this)) == 0){
-        //     for(uint8 i = 0; i < 3; i++){
-        //         if(openPositions[i] == _tokenIn) delete openPositions[i];
-        //     }
-        // }
-    }
-
-    function swapTokensMultihop(uint256 _amountIn, address _tokenIn, address[] calldata middlemanTokens, address _tokenOut, uint24[] calldata poolFees, uint256 _amountOutMinimum) external onlyOwner returns(uint256 amountOut) {
-        require(approvedTokens[_tokenIn] == true && approvedTokens[_tokenOut] == true,"You can't trade tokens that are not approved.");
-
-        bytes memory swapPath;
-
-
-        if(middlemanTokens.length == 1){
-            swapPath = abi.encodePacked(_tokenIn, poolFees[0], middlemanTokens[0], poolFees[1], _tokenOut);
-        }
-        else if(middlemanTokens.length == 2){
-            swapPath = abi.encodePacked(_tokenIn, poolFees[0], middlemanTokens[0], poolFees[1], middlemanTokens[1], poolFees[2], _tokenOut);
-        }
-        
-        TransferHelper.safeApprove(_tokenIn, address(swapRouter), _amountIn);
-        
-        ISwapRouter.ExactInputParams memory params =
-            ISwapRouter.ExactInputParams({
-                path: swapPath,
-                recipient: address(this),
-                deadline: 0, // TODO: fix
-                amountIn: _amountIn,
-                amountOutMinimum: _amountOutMinimum
-            });
-
-        amountOut = swapRouter.exactInput(params);
-
-        /// TODO videti kako implemenitrati automatsko zatvaranje perpetual pozicija i odredjivanje njihove vrednosti
-        /// ovakvom implementacijom ne bi trebalo da se dizu pare ukoliko smo u aktivnom trade-u
-
-        // if(_tokenIn == address(USDC_CONTRACT)){
-        //     for(uint8 i = 0; i < 3; i++){
-        //         if(openPositions[i] == address(0)) openPositions[i] = _tokenOut;
-        //     }
-        // }
-        
-        // else if(ERC20(_tokenIn).balanceOf(address(this)) == 0){
-        //     for(uint8 i = 0; i < 3; i++){
-        //         if(openPositions[i] == _tokenIn) delete openPositions[i];
-        //     }
-        // }
-    }
 
     function increasePosition(
         address market,
         bool isLong,
-        address[] memory swapPath,
+        // address[] memory swapPath,
         uint256 initialCollateralDeltaUsdc,
         uint256 positionDeltaUsd,
         uint256 acceptablePrice,
@@ -340,7 +254,7 @@ contract Trading is Ownable {
                 address(0), // uiFeeReceiver
                 market,
                 address(USDC_CONTRACT),
-                swapPath
+                new address[](0)
             ),
             Order.CreateOrderParamsNumbers(
                 positionDeltaUsd, // sizeDeltaUsd
@@ -364,7 +278,7 @@ contract Trading is Ownable {
         address market,
         bool isLong,
         address collateralToken,
-        address[] memory swapPath,
+        // address[] memory swapPath,
         uint256 collateralDelta,
         uint256 positionDeltaUsd,
         uint256 acceptablePrice,
@@ -381,7 +295,7 @@ contract Trading is Ownable {
                 address(0), // uiFeeReceiver
                 market,
                 collateralToken, // initialCollateralToken
-                swapPath
+                new address[](0)
             ),
             Order.CreateOrderParamsNumbers(
                 positionDeltaUsd, // sizeDeltaUsd
@@ -512,6 +426,10 @@ contract Trading is Ownable {
     }
 
     //UTILS
+
+    function transferAllEther() external onlyOwner {
+        payable(msg.sender).transfer(address(this).balance);
+    }
 
     function getTokenPricesFromChainlink()
         public

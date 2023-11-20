@@ -50,7 +50,6 @@ export async function increasePosition(
     .increasePosition(
       market.marketKey,
       isLong,
-      swapPath,
       collateralDeltaUsd,
       positionDeltaUsd,
       acceptablePrice,
@@ -97,7 +96,6 @@ export async function decreasePosition(
       marketInfo.marketKey,
       isLong,
       collateralToken.address,
-      swapPath,
       collateralDeltaUsd,
       positionDeltaUsd,
       acceptablePrice,

@@ -38,52 +38,8 @@ describe('Trading', () => {
         expect(await USDC.name()).to.eq('USDC');
         expect(await USDC.symbol()).to.eq('USDC');
 
-        const UNIFactory = await ethers.getContractFactory('USDC', signers[0]);
-        UNI = (await UNIFactory.deploy()) as USDC;
-        await UNI.deployed();
-
-        expect(UNI.address).to.properAddress;
-
-        const CRVFactory = await ethers.getContractFactory('USDC', signers[0]);
-        CRV = (await CRVFactory.deploy()) as USDC;
-        await CRV.deployed();
-
-        expect(CRV.address).to.properAddress;
-
-        const WETHFactory = await ethers.getContractFactory('USDC', signers[0]);
-        WETH = (await WETHFactory.deploy()) as USDC;
-        await WETH.deployed();
-
-        expect(WETH.address).to.properAddress;
-
-        const SwapRouterMockedFactory = await ethers.getContractFactory('SwapRouterMock', signers[0]);
-        swapRouterMock = (await SwapRouterMockedFactory.deploy(USDC.address, UNI.address, CRV.address)) as SwapRouterMock;
-        await swapRouterMock.deployed();
-
-        expect(swapRouterMock.address).to.properAddress;
-
-        // const swapRouter = new SwapRouter(
-        //     // The address of the Uniswap V3 Router contract
-        //     '0xE592427A0AEce92De3Edee1F18E0157C05861564',
-        //     // The provider to use for web3.js
-        //     ethers.provider
-        //   );
-
-        const routerMockFactory = await ethers.getContractFactory('RouterMock', signers[0]);
-        routerMock = (await routerMockFactory.deploy()) as RouterMock;
-        await routerMock.deployed();
-
-        expect(routerMock.address).to.properAddress;
-
-        const positionRouterMockFactory = await ethers.getContractFactory('PositionRouterMock', signers[0]);
-        positionRouterMock = (await positionRouterMockFactory.deploy(USDC.address, WETH.address)) as PositionRouterMock;
-        await positionRouterMock.deployed();
-
-        expect(positionRouterMock.address).to.properAddress;
-
         const tradingFactory = await ethers.getContractFactory('Trading', signers[0]);
-        trading = (await tradingFactory.deploy(USDC.address, [USDC.address, UNI.address, CRV.address], swapRouterMock.address,
-            routerMock.address, positionRouterMock.address)) as Trading;
+        trading = (await tradingFactory.deploy(USDC.address, [], USDC.address,  USDC.address)) as Trading;
         await trading.deployed();
 
         expect(trading.address).to.properAddress;
@@ -130,18 +86,6 @@ describe('Trading', () => {
             await USDC.approve(trading.address, BigNumber.from('100000000000000'));
 
             await expect(trading.deposit('100000000000000')).to.be.revertedWith('This deposit would exceed our limit.');
-        });
-
-        it('should revert because the user is depositing while the contract is in the position', async () => {
-            USDC.mintTokenToAddress(signers[1].address, 100);
-
-            trading = trading.connect(signers[1]);
-            USDC = USDC.connect(signers[1]);
-
-            await USDC.approve(trading.address, BigNumber.from('100000000'));
-
-            trading.setmockedPositionValue(1);
-            await expect(trading.deposit('100000000')).to.be.revertedWith(`You can't deposit while we are in trade.`);
         });
 
         it('should deposit USDC to the contract and calculate userOwnership correctly', async () => {
@@ -194,21 +138,6 @@ describe('Trading', () => {
 
             expect(await trading.withdraw(2940000000 / 2, 0)).to.emit(trading, 'withdrawnFromInvestment');
             expect(await USDC.balanceOf(signers[1].address)).to.eq(BigNumber.from('294000000'));
-        });
-
-        it('should withdraw form the contract with 5% extra fee', async () => {
-            USDC.mintTokenToAddress(signers[1].address, 300);
-
-            trading = trading.connect(signers[1]);
-            USDC = USDC.connect(signers[1]);
-
-            await USDC.approve(trading.address, BigNumber.from('300000000'));
-            await trading.deposit('300000000');
-
-            await trading.setmockedPositionValue(1);
-
-            expect(await trading.withdraw(2940000000, 0)).to.emit(trading, 'withdrawnFromInvestment');
-            expect(await USDC.balanceOf(signers[1].address)).to.eq(BigNumber.from('279300000'));
         });
 
         it('should withdraw form the contract with trading', async () => {
@@ -443,107 +372,6 @@ describe('Trading', () => {
             expect(userInvestment[1].initialInvestment).to.eq(BigNumber.from('288120000'));
             expect(userInvestment[1].userOwnership).to.eq(2881200000);
         });
-    });
-
-    describe('swapTokens', async () => {
-
-        it('should revert because the caller is not the owner', async () => {
-            trading = trading.connect(signers[1]);
-            USDC = USDC.connect(signers[1]);
-
-            await expect(trading.swapTokens(1, USDC.address, UNI.address, 3000, 0, 0)).to.be.revertedWith('Ownable: caller is not the owner');
-        });
-
-        it('should revert because the owner is trying to trade token that is not approved', async () => {
-            USDC.mintTokenToAddress(trading.address, 1000);
-            UNI.mintTokenToAddress(swapRouterMock.address, 1000);
-
-            await expect(trading.swapTokens(BigNumber.from('1000000000'), USDC.address, '0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868', 3000,
-                0, 0)).to.be.revertedWith(`You can't trade tokens that are not approved.`);
-        });
-
-        it('should swap USDC for UNI and UNI for USDC', async () => {
-            USDC.mintTokenToAddress(trading.address, 900);
-            UNI.mintTokenToAddress(swapRouterMock.address, 1000);
-
-            await trading.swapTokens(BigNumber.from('1000000000'), USDC.address, UNI.address, 3000, 0, 0);
-
-            expect(await USDC.balanceOf(trading.address)).to.eq(0);
-            expect(await USDC.balanceOf(swapRouterMock.address)).to.eq(BigNumber.from('1000000000'));
-
-            expect(await UNI.balanceOf(trading.address)).to.eq(BigNumber.from('199400000'));
-            expect(await UNI.balanceOf(swapRouterMock.address)).to.eq(BigNumber.from('800600000'));
-
-            await trading.swapTokens(BigNumber.from('199400000'), UNI.address, USDC.address, 3000, 0, 0);
-
-            expect(await USDC.balanceOf(trading.address)).to.eq(BigNumber.from('994009000'));
-            expect(await USDC.balanceOf(swapRouterMock.address)).to.eq(BigNumber.from('5991000'));
-
-            expect(await UNI.balanceOf(trading.address)).to.eq(0);
-            expect(await UNI.balanceOf(swapRouterMock.address)).to.eq(BigNumber.from('1000000000'));
-        });
-    });
-
-    describe('swapTokensMultihop', async () => {
-
-        it('should revert because the caller is not the owner', async () => {
-            trading = trading.connect(signers[1]);
-            USDC = USDC.connect(signers[1]);
-
-            await expect(trading.swapTokensMultihop(1, USDC.address, [UNI.address], CRV.address, [3000], 0)).to.be.revertedWith('Ownable: caller is not the owner');
-        });
-
-        it('should revert because the owner is trying to trade token that is not approved', async () => {
-            USDC.mintTokenToAddress(trading.address, 1000);
-            UNI.mintTokenToAddress(swapRouterMock.address, 1000);
-
-            await expect(trading.swapTokensMultihop(1, USDC.address, [UNI.address], '0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868', [3000], 0)).to.be.revertedWith(`You can't trade tokens that are not approved.`);
-        });
-
-        it('should swap USDC for CRV and CRV for USDC', async () => {
-            USDC.mintTokenToAddress(trading.address, 900);
-            CRV.mintTokenToAddress(swapRouterMock.address, 1000);
-
-            await trading.swapTokensMultihop(BigNumber.from('1000000000'), USDC.address, [UNI.address], CRV.address, [3000, 3000], 0);
-
-            expect(await USDC.balanceOf(trading.address)).to.eq(0);
-            expect(await USDC.balanceOf(swapRouterMock.address)).to.eq(BigNumber.from('1000000000'));
-
-            expect(await CRV.balanceOf(trading.address)).to.eq(BigNumber.from('497004500'));
-            expect(await CRV.balanceOf(swapRouterMock.address)).to.eq(BigNumber.from('502995500'));
-
-            await trading.swapTokensMultihop(BigNumber.from('497004500'), CRV.address, [UNI.address], USDC.address, [3000, 3000], 0);
-
-            expect(await USDC.balanceOf(trading.address)).to.eq(BigNumber.from('988053890'));
-            expect(await USDC.balanceOf(swapRouterMock.address)).to.eq(BigNumber.from('11946110'));
-
-            expect(await CRV.balanceOf(trading.address)).to.eq(0);
-            expect(await CRV.balanceOf(swapRouterMock.address)).to.eq(BigNumber.from('1000000000'));
-        });
-    });
-
-    // describe('enterPositionPerpetual', async () => {
-
-    //     it('open and close USDC/ETH short position', async () => {
-    //         USDC.mintTokenToAddress(trading.address, 900);
-
-
-    //         await
-    //             trading.enterPositionPerpetual([USDC.address, WETH.address], WETH.address, BigNumber.from('1000000000000000000000'), 0, BigNumber.from('1100000000000000000000'), true,
-    //                 BigNumber.from('1869090500000000000000000000000000'), BigNumber.from('200000000000000'),
-    //                 ethers.utils.formatBytes32String('0'), ethers.constants.AddressZero);
-
-    //         expect(await USDC.balanceOf(trading.address)).to.eq(0);
-    //         expect(await USDC.balanceOf(positionRouterMock.address)).to.eq(BigNumber.from('1000000000000000000000'));
-
-    //         await
-    //             trading.closePositionPerpetual([USDC.address], WETH.address, 0, BigNumber.from('1000000000000000000000'), true, trading.address,
-    //                 BigNumber.from('1869090500000000000000000000000000'), 0, BigNumber.from('100000000000000'), false, ethers.constants.AddressZero);
-
-    //         expect(await USDC.balanceOf(trading.address)).to.eq(BigNumber.from('997002000000000000000'));
-    //         expect(await USDC.balanceOf(positionRouterMock.address)).to.eq(BigNumber.from('2998000000000000000'));
-    //     });
-    // });
-
+    });    
 
 });
